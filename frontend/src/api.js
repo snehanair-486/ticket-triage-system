@@ -1,6 +1,9 @@
 // Edit API_BASE here if the backend URL (or stage) ever changes. No trailing slash.
 // Edit API_BASE here or set VITE_API_BASE in .env. No trailing slash.
-export const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || "https://1jgh0qrgfg.execute-api.ap-southeast-2.amazonaws.com";
+
+export const API_BASE =
+  (import.meta.env && import.meta.env.VITE_API_BASE) ||
+  "https://1jgh0qrgfg.execute-api.ap-southeast-2.amazonaws.com";
 
 export function urgencyLabel(urgency) {
   return urgency ? urgency.charAt(0) + urgency.slice(1).toLowerCase() : "Analysing";
