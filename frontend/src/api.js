@@ -52,7 +52,56 @@ function normalizeList(data) {
   return list.map(normalizeTicket);
 }
 
-export async function submitTicket(text) {
+// User-specific ticket tracking prefix
+const USER_TICKETS_PREFIX = "triage_user_tickets_";
+
+export function getUserTicketIds(email) {
+  if (!email) return [];
+  try {
+    const key = USER_TICKETS_PREFIX + email.trim().toLowerCase();
+    return JSON.parse(localStorage.getItem(key) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function saveUserTicketId(email, id) {
+  if (!email || !id) return;
+  try {
+    const key = USER_TICKETS_PREFIX + email.trim().toLowerCase();
+    const list = getUserTicketIds(email);
+    if (!list.includes(id)) {
+      list.unshift(id);
+      localStorage.setItem(key, JSON.stringify(list));
+    }
+  } catch {}
+}
+
+// Legacy fallback
+export function getMyTicketIds(email) {
+  if (email) return getUserTicketIds(email);
+  try {
+    return JSON.parse(localStorage.getItem("triage_my_ticket_ids") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function saveMyTicketId(id, email) {
+  if (email) {
+    saveUserTicketId(email, id);
+    return;
+  }
+  try {
+    const list = JSON.parse(localStorage.getItem("triage_my_ticket_ids") || "[]");
+    if (!list.includes(id)) {
+      list.unshift(id);
+      localStorage.setItem("triage_my_ticket_ids", JSON.stringify(list));
+    }
+  } catch {}
+}
+
+export async function submitTicket(text, userEmail = "") {
   const data = await request("/tickets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -60,7 +109,11 @@ export async function submitTicket(text) {
   });
   const id = data && (data.ticketId || data.id);
   if (!id) throw new Error("The server did not return a ticket ID.");
-  saveMyTicketId(id);
+  if (userEmail) {
+    saveUserTicketId(userEmail, id);
+  } else {
+    saveMyTicketId(id);
+  }
   return id;
 }
 
@@ -79,26 +132,6 @@ export async function getTicket(id) {
   }
 }
 
-// Local storage tracking for Customer "My Tickets"
-const MY_TICKETS_KEY = "triage_my_ticket_ids";
-export function getMyTicketIds() {
-  try {
-    return JSON.parse(localStorage.getItem(MY_TICKETS_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-export function saveMyTicketId(id) {
-  try {
-    const list = getMyTicketIds();
-    if (!list.includes(id)) {
-      list.unshift(id);
-      localStorage.setItem(MY_TICKETS_KEY, JSON.stringify(list));
-    }
-  } catch {}
-}
-
 // Staff ticket resolution state stored in localStorage for demo responsiveness
 const RESOLVED_TICKETS_KEY = "triage_staff_ticket_status";
 export function getTicketStatusOverrides() {
@@ -114,6 +147,7 @@ export function setTicketStatusOverride(id, status) {
     const map = getTicketStatusOverrides();
     map[id] = status;
     localStorage.setItem(RESOLVED_TICKETS_KEY, JSON.stringify(map));
+    window.dispatchEvent(new Event("triage_status_updated"));
   } catch {}
 }
 
@@ -128,4 +162,3 @@ export function getAISentiment(text = "", urgency = "") {
   }
   return { label: "Neutral / Inquiring", color: "var(--low)", score: 28 };
 }
-

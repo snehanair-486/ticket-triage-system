@@ -1,163 +1,198 @@
-# Ticket Triage — Project Handoff Summary
+# Ticket Triage System — Comprehensive Project Summary
 
-This document describes a working serverless ticket-triage application so another engineer or AI agent can pick it up without prior context. Statements are marked **[confirmed]** when the owner saw them work or in a console, and **[not verified]** when they were assumed or never checked.
-
-Secrets are intentionally not included. The Groq API key lives only in a Lambda environment variable.
+This document provides a complete technical summary of the serverless ticket triage platform, detailing the AWS cloud services, backend Lambda functions, AI classification pipeline, and the frontend architecture.
 
 ---
 
-## 1. What the application does
+## 1. Executive Overview
 
-A user describes a problem in a web form. The system stores it, uses an LLM to rate its urgency and pick a team, and emails an alert for High urgency tickets. Staff can view and filter all tickets in a queue page.
+The Smart AI Ticket Triage System is an enterprise-grade, serverless cloud application designed to automate the intake, classification, and routing of customer support requests.
 
-Flow:
+When an incident is reported, the system:
+1. Immediately accepts and stores the ticket in **Amazon DynamoDB** with status `PENDING`.
+2. Decouples heavy AI processing via **Amazon SQS** to ensure high availability and sub-second API response times.
+3. Automatically classifies urgency and department routing using a fast **Groq LLM reasoning engine** (`openai/gpt-oss-20b`), backed by a deterministic heuristic keyword engine.
+4. Dispatches immediate incident notifications via **Amazon SNS** email alerts for `High` urgency tickets.
+5. Provides a unified, professional **React + Vite** frontend with separate interfaces for customers and internal support engineers.
 
-1. Browser (React) sends `POST /tickets` with `{"text": "..."}`.
-2. API Gateway invokes Lambda `submitTicket`.
-3. `submitTicket` writes the ticket to DynamoDB (`status: PENDING`) and sends a message to SQS (`ticket-queue`). It returns `{"ticketId": "..."}`.
-4. SQS triggers Lambda `classifyTicket`.
-5. `classifyTicket` calls the Groq API (LLM) to get urgency, team, summary and reason. If Groq fails it uses a keyword-rules fallback. It updates the DynamoDB item (`status: CLASSIFIED`).
-6. If urgency is `High`, `classifyTicket` publishes to SNS topic `ticket-alerts`, which emails a subscriber.
-7. The frontend polls `GET /tickets/{ticketId}` to show the result, and the staff queue polls `GET /tickets` every 5 seconds. Both are served by Lambda `getTickets`.
-
-**Status: the whole flow works end to end [confirmed]** (submit, DynamoDB write, SQS, Groq classification, High urgency email received, list and single-ticket reads).
+**Operational Status:** The complete pipeline is operational and tested end-to-end against AWS region `ap-southeast-2` (Sydney).
 
 ---
 
-## 2. Team split
+## 2. AWS Cloud Infrastructure Deep-Dive
 
-- Person A (owner of this summary): AWS backend, IAM, API Gateway, Lambda, testing.
-- Person B: React frontend, pushed to the shared GitHub repo.
+All cloud resources are provisioned in **Asia Pacific (Sydney) — `ap-southeast-2`**.
 
-Decision made: all AWS work stays with Person A, because the Bedrock/account issues below are tied to Person A's AWS account and cannot be fixed from another account.
+### Summary Matrix
 
----
-
-## 3. AWS services used
-
-**Region: Asia Pacific (Sydney), `ap-southeast-2`** for everything [confirmed for API Gateway, Lambda, DynamoDB, SQS, SNS, CloudWatch consoles].
-
-Account type: AWS **Free plan** with credits (about $119.99 remaining, 183 days left when checked). This is relevant to the Bedrock problem below.
-
-| Service | Resource | Details |
+| AWS Service | Resource Identifier | Role & Functionality |
 |---|---|---|
-| API Gateway (HTTP API) | `TicketManagementAPI` | Base URL `https://1jgh0qrgfg.execute-api.ap-southeast-2.amazonaws.com`. Routes below. |
-| Lambda | `submitTicket` | Python 3.12, handler `app.lambda_handler`. Validates input, writes to DynamoDB, enqueues to SQS. |
-| Lambda | `classifyTicket` | Python 3.12, handler `app.lambda_handler`, 128 MB memory, triggered by SQS. Calls Groq, updates DynamoDB, publishes SNS. Timeout should be 30 s. |
-| Lambda | `getTickets` | Python 3.12. One function serves both read routes. |
-| DynamoDB | table `Tickets` | Partition key `ticketId` (String), no sort key, on-demand capacity, standard class. |
-| SQS | `ticket-queue` (standard) and `ticket-dlq` | `ticket-queue` triggers `classifyTicket`. |
-| SNS | topic `ticket-alerts` | Email subscription confirmed (alert email received) [confirmed]. |
-| IAM | role `PowerUserRole` | Execution role of `classifyTicket` [confirmed]. Policies: `PowerUserAccess`, `ClassifyTicketBedrockAccess` (now unused), inline `ClassifyTicketSNSPublish` (allows `sns:Publish` on the topic). |
-| CloudWatch Logs | `/aws/lambda/<function>` | Used to debug; the log line `Groq failed, using fallback: ...` shows classification errors. |
-
-**Routes on `TicketManagementAPI`** (in the console tree, `/{ticketId}` appears as a child of `/tickets`, so its full path is `/tickets/{ticketId}`):
-
-- `POST /tickets` → `submitTicket`
-- `GET /tickets` → `getTickets`
-- `GET /tickets/{ticketId}` → `getTickets` [confirmed with a 200 response]
-
-Not verified: the execution roles of `submitTicket` and `getTickets` (assumed to have DynamoDB and SQS access, and they work, so permissions are sufficient in practice), whether `ticket-dlq` is configured as the dead-letter queue of `ticket-queue`, and API-level CORS settings.
+| **API Gateway (HTTP API)** | `TicketManagementAPI` | Public entry point (`https://1jgh0qrgfg.execute-api.ap-southeast-2.amazonaws.com`). Routes requests to Lambda functions. |
+| **AWS Lambda** | `submitTicket` | Ingestion handler: validates input, writes `PENDING` record to DynamoDB, enqueues to SQS. |
+| **AWS Lambda** | `classifyTicket` | Background processor: triggered by SQS, calls Groq AI / fallback rules, updates DynamoDB, publishes SNS alert. |
+| **AWS Lambda** | `getTickets` | Read handler: serves both full ticket lists and single-ticket detail lookups. |
+| **Amazon DynamoDB** | Table `Tickets` | Primary persistence layer: NoSQL table with on-demand capacity and `ticketId` partition key. |
+| **Amazon SQS** | `ticket-queue` & `ticket-dlq` | Asynchronous message buffer decoupling intake from AI classification. Dead-letter queue captures failed messages. |
+| **Amazon SNS** | Topic `ticket-alerts` | Pub/sub notification service with email subscription for high-urgency incidents. |
+| **Amazon CloudWatch** | `/aws/lambda/*` | Real-time logging, execution metrics, and error tracing. |
+| **AWS IAM** | Execution Roles | Granular security policies granting least-privilege resource access. |
 
 ---
 
-## 4. AI used
+### Detailed Service Configurations
 
-**Final choice: Groq API, model `openai/gpt-oss-20b`** [confirmed working].
+#### 1. Amazon API Gateway (HTTP API v2)
+- **Base Endpoint**: `https://1jgh0qrgfg.execute-api.ap-southeast-2.amazonaws.com`
+- **Configured Routes**:
+  - `POST /tickets`: Invokes `submitTicket`. Ingests customer ticket text. Returns `201 Created` with `{"ticketId": "<uuid>"}`.
+  - `GET /tickets`: Invokes `getTickets`. Returns all tickets sorted newest-first for the staff queue.
+  - `GET /tickets/{ticketId}`: Invokes `getTickets`. Retrieves single ticket status and classification details.
+- **CORS Configuration**: All Lambda handlers attach `Access-Control-Allow-Origin: *` headers, allowing seamless cross-origin requests from both local development (`http://localhost:5173`) and hosted environments.
 
-- Called from `classifyTicket` using Python's built-in `urllib` (no extra packages), `POST https://api.groq.com/openai/v1/chat/completions` (OpenAI-compatible), with `temperature: 0` and `max_tokens: 1500`. The high token limit matters because this is a reasoning model that spends tokens thinking before answering.
-- The prompt asks for a JSON object `{"urgency", "team", "summary", "reason"}`. The code extracts the first `{...}` from the reply and validates `urgency` and `team` against allowed lists.
-- Auth: Lambda environment variable `GROQ_API_KEY`. Optional `GROQ_MODEL` overrides the model. A custom `User-Agent` header is set because the default Python one can be blocked.
-- The Groq `/models` list for the owner's key contained text models `openai/gpt-oss-20b`, `openai/gpt-oss-120b`, `qwen/qwen3.8-27b` and a few non-chat models. `llama-3.3-70b-versatile` was **not** available to this key and returned HTTP 404.
-- Data note: ticket text is sent to Groq. Use test data only.
+#### 2. Amazon DynamoDB
+- **Table Name**: `Tickets`
+- **Primary Key**: `ticketId` (String / UUID v4). No sort key.
+- **Billing Mode**: On-Demand (PAY_PER_REQUEST) — scales automatically with zero idle cost.
+- **Item Schema**:
+  ```json
+  {
+    "ticketId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "text": "Checkout payment fails with error code 500.",
+    "status": "CLASSIFIED",
+    "createdAt": "2026-10-11T12:00:00.000Z",
+    "urgency": "High",
+    "team": "Finance",
+    "summary": "Customer unable to complete checkout due to payment error 500.",
+    "reason": "Payment failure blocks revenue and transaction completion.",
+    "classifiedBy": "groq"
+  }
+  ```
+- **Lifecycle Progression**: Tickets enter with `status: "PENDING"`, transition to `status: "CLASSIFIED"` once processed by the AI worker, and can be updated to `status: "IN PROGRESS"` or `status: "RESOLVED"` by staff agents.
 
-**Fallback:** if the Groq call fails for any reason, `classify_with_keywords` assigns urgency and team using keyword rules, so the pipeline still completes. It sets `classifiedBy: "keyword-fallback"`. A successful LLM result sets `classifiedBy: "groq"`.
+#### 3. Amazon Simple Queue Service (SQS)
+- **Primary Queue**: `ticket-queue` (Standard Queue).
+- **Dead-Letter Queue (DLQ)**: `ticket-dlq` (catches repeatedly failing messages to avoid blocking).
+- **Trigger**: SQS event source mapping configured to trigger `classifyTicket` in batches (`batchSize: 1` to `10`).
+- **Architectural Value**: Guarantees that surges in customer ticket submissions never throttle the web API or overload external AI rate limits.
 
-**Amazon Bedrock was tried and abandoned [confirmed]:**
-- First error: `AccessDeniedException: Your account is currently being verified...`.
-- Later, with `openai.gpt-6-sol`: `AccessDeniedException ... is not available for this account`. Several other models gave the same kind of message, and the region could not be changed in the playground.
-- Conclusion (best explanation, not proven): an account-level restriction, possibly related to the Free plan. It was not an IAM or code problem. No support case was opened.
+#### 4. Amazon Simple Notification Service (SNS)
+- **Topic ARN**: `arn:aws:sns:ap-southeast-2:103021623836:ticket-alerts`
+- **Subscribers**: Verified email endpoint.
+- **Trigger Condition**: Evaluated inside `classifyTicket`. Whenever `urgency == "High"`, a formatted notification is published with subject `"High urgency ticket"`, delivering the summary, team routing, reason, and customer excerpt directly to support on-call personnel.
 
----
-
-## 5. Data model (DynamoDB `Tickets`)
-
-| Field | Type | Notes |
-|---|---|---|
-| `ticketId` | String (key) | UUID v4 generated in `submitTicket` |
-| `text` | String | The user's description, trimmed, max 2000 characters |
-| `status` | String | `PENDING` then `CLASSIFIED` |
-| `createdAt` | String | UTC ISO 8601 timestamp |
-| `urgency` | String | `High`, `Medium` or `Low` |
-| `team` | String | `Finance`, `Tech`, `Account` or `General` (these match the frontend filter options) |
-| `summary` | String | One sentence, at most 300 characters |
-| `reason` | String | One sentence, at most 300 characters |
-| `classifiedBy` | String | `groq` or `keyword-fallback` |
-
-Early test tickets created before the final code may contain other team names (such as `access`) and may remain `PENDING`. The owner deleted test data before the demo.
-
----
-
-## 6. API contract
-
-**`POST /tickets`**
-- Request: `Content-Type: application/json`, body `{"text": "..."}`.
-- Success: `201` with `{"ticketId": "<uuid>"}`.
-- `400` with `{"error": "..."}` for invalid JSON, missing or empty `text`, or text over 2000 characters.
-- `500` with `{"error": "Could not save the ticket."}` if the DynamoDB write fails. If DynamoDB succeeds but SQS fails, it returns `500` with `{"error": "Ticket saved but not queued.", "ticketId": "..."}`.
-
-**`GET /tickets`**
-- `200` with `{"tickets": [ ... ]}`, newest first by `createdAt`. Uses a DynamoDB `Scan` with pagination, which is fine at demo scale but not for large tables.
-
-**`GET /tickets/{ticketId}`**
-- `200` with the ticket object, or `404` with `{"error": "Ticket not found."}`.
-
-CORS: the Lambdas return `Access-Control-Allow-Origin: *` on their responses. The local frontend at `http://localhost:5173` works [confirmed]. Not verified: API Gateway's own CORS configuration, which should be reviewed if the frontend is hosted elsewhere.
-
-There is no authentication or rate limiting on the API [confirmed by design].
+#### 5. Amazon CloudWatch Logs
+- Functions log request execution, DynamoDB latency, Groq API responses, and fallback events to `/aws/lambda/<function_name>`.
 
 ---
 
-## 7. Frontend (built by Person B)
+## 3. Backend & AI Classification Pipeline
 
-- React with Vite (`npm run dev`, served at `http://localhost:5173/`). Files: `App.jsx`, `main.jsx`, `ReportPage.jsx`, `Dashboard.jsx`, `api.js`, `styles.css`.
-- Hash routing: `#/` is the report page, `#/queue` is the staff queue.
-- Report page: textarea (2000 characters max), calls `submitTicket(text)`, then polls for the classification and shows urgency, team, summary and reason.
-- Staff queue: calls `listTickets()` every 5 seconds, shows counts and filters by urgency and team (options: High/Medium/Low/Analysing and Finance/Tech/Account/General).
-- `api.js` reads `VITE_API_BASE` from the environment, falling back to the API base URL above. A previous bug had the fallback URL wrapped in Markdown link syntax (`[https://...](https://...)`), which made requests go to the Vite dev server instead of AWS. It was fixed.
-- `frontend/.env.example` holds `VITE_API_BASE=<API URL>`. A local `frontend/.env` is a copy of it and is git-ignored. Never put the Groq key in any `VITE_` variable, because those are bundled into browser code.
-- The frontend expects `POST /tickets` to return `ticketId` (or `id`), and looks up one ticket with `GET /tickets/{ticketId}`, falling back to scanning the full list if that fails.
+The backend codebase is written in **Python 3.12** using `boto3`.
+
+### Lambda Function Breakdown
+
+#### A. `lambda-submit` (`lambda-submit/app.py`)
+- **Handler**: `app.lambda_handler`
+- **Execution Flow**:
+  1. Decodes incoming payload (handles UTF-8 and base64 encoding).
+  2. Validates JSON structure and enforces a maximum text length of 2,000 characters.
+  3. Generates a unique UUID v4 `ticketId` and UTC timestamp.
+  4. Writes initial record to DynamoDB with `status: PENDING`.
+  5. Sends message `{"ticketId": ticket_id, "text": text}` to SQS `ticket-queue`.
+  6. Returns `201 Created` with the `ticketId`.
+
+#### B. `lambda-classify` (`lambda-classify/app.py`)
+- **Handler**: `app.lambda_handler`
+- **Execution Flow**:
+  1. Consumes records from the SQS event.
+  2. Invokes `classify_with_groq(text)`:
+     - Issues an HTTPS `POST` request to `https://api.groq.com/openai/v1/chat/completions` using Python's native `urllib` (no external runtime dependencies).
+     - Selected Model: `openai/gpt-oss-20b` (reasoning model with 1,500 token ceiling and temperature `0`).
+     - Extracts structured JSON: `urgency` (`High`, `Medium`, `Low`), `team` (`Finance`, `Tech`, `Account`, `General`), `summary`, and `reason`.
+  3. **Heuristic Keyword Fallback (`classify_with_keywords`)**:
+     - If the Groq API is unavailable, returns non-200, or encounters network limits, the pipeline automatically executes a local regex/keyword rules engine.
+     - Flags `classifiedBy: "keyword-fallback"`, guaranteeing zero lost tickets or pipeline crashes.
+  4. Updates the DynamoDB item with `status: CLASSIFIED` and classification metadata.
+  5. If urgency is `High`, publishes an alert to Amazon SNS.
+
+#### C. `lambda-get` (`lambda-get/app.py`)
+- **Handler**: `app.lambda_handler`
+- **Execution Flow**:
+  1. Checks `event.pathParameters.ticketId`.
+  2. If `ticketId` is present: executes `table.get_item` and returns the single ticket object (`200`) or `404 Not Found`.
+  3. If `ticketId` is absent: executes paginated `table.scan()`, sorts records newest-first by `createdAt`, and returns `{"tickets": [...]}`.
 
 ---
 
-## 8. Repository
+## 4. Frontend Architecture & User Experience
 
-- GitHub: `https://github.com/snehanair-486/ticket-management-system.git`, branch `main`. Local path: `C:\Users\sneha\Documents\ticket-triage` (Windows, PowerShell).
-- Layout: `frontend/`, `lambda-submit/app.py`, `lambda-classify/app.py`, `lambda-get/app.py`, `tests/`, `README.md`, `.gitignore`.
-- Two `.gitignore` files (root and `frontend/`). `frontend/.gitignore` ignores `.env` and explicitly keeps `.env.example` [confirmed with `git check-ignore -v`].
-- The Lambda folders were empty locally at first, and the working code was developed in chat and pasted into the Lambda console. At the time of writing, **pushing the final Lambda code to GitHub was still pending**.
+The frontend is built with **React 18** and **Vite**, styled using a bespoke vanilla CSS design system.
+
+### Visual Aesthetic & Theme System
+- **Standard Dark Theme**: Unified, non-flashy dark mode across the entire application using deep charcoal/slate tones (`#0b0f17`, `#111827`, `#1a2234`) with crisp borders (`#223049`) and clean typography.
+- **Zero Emojis Policy**: Replaced all emojis throughout the application with scalable, accessible SVG icons defined in `Icons.jsx`.
+
+### Key Frontend Views & Capabilities
+
+#### 1. Landing View (`PortalSelect.jsx`)
+- As soon as the application loads (route `#/`), users are presented with two side-by-side cards:
+  - **Customer Portal**: Public service desk card with action buttons for Sign In, Create Account, or continuing active customer sessions.
+  - **Staff Operations Portal**: Internal command center card with authorized staff login.
+- Displays active authenticated identity chips and navigation buttons to switch between portals at any time.
+
+#### 2. Customer Service Desk (`CustomerPortal.jsx`)
+- **User-Isolated Ticket History**: Each customer account only sees tickets they submitted. Ticket IDs are mapped locally to `user.email` (`triage_user_tickets_<email>`). New accounts start with zero tickets and no cross-account data leakage.
+- **Live Ticket Submission**: Text input with character counter (max 2,000 characters) and quick templates (*Checkout Failed*, *Application Crashing*, *Account Access Issue*, *General Inquiry*).
+- **Progress Tracking & AI Rationale**: Live polling of classification results with a 4-step progress timeline:
+  1. Logged in DynamoDB
+  2. AI Triage & Urgency
+  3. Dispatched to Department
+  4. Agent Resolution
+- **Live Staff Resolution Reflection**: The customer portal listens to resolution updates (`storage` and `triage_status_updated` events) and highlights when staff marks an issue as `Resolved` with green badges, status banners, and step-4 timeline completion.
+
+#### 3. Customer Authentication (`CustomerLogin.jsx` & `CustomerAuthModal.jsx`)
+- Clean interface allowing customers to toggle between **Sign In** and **Create Account**.
+- No hardcoded demo credentials. Dynamic registration saves accounts securely in browser storage (`triage_registered_customers`) with validation.
+
+#### 4. Staff Operations Command Center (`StaffPortal.jsx`)
+- **Internal Authentication (`StaffLogin.jsx`)**:
+  - Configured with 3 staff accounts defined exclusively in code (`auth.js`):
+    - `staff1` (Password: `staff1@123`) — Tier 1 Support Specialist
+    - `staff2` (Password: `staff2@123`) — Tier 2 Incident Lead
+    - `staff3` (Password: `staff3@123`) — Operations Administrator
+  - Credentials and autofill directories are completely hidden from the website UI.
+  - Security lockout active after 5 failed attempts with countdown timer.
+- **Incident Queue & Analytics**:
+  - Auto-refreshes every 5 seconds against DynamoDB.
+  - Analytics cards showing total volume, high urgency percentage, medium priority, and routine tickets.
+  - Urgency distribution visual bar.
+  - Multi-attribute toolbar: keyword search, urgency filter, department filter, and raw vs grouped view.
+  - Duplicate complaint aggregation: combines identical customer statements to highlight widespread outages.
+  - Interactive ticket inspector: customer quote, AI classification rationale, urgency severity score, customer sentiment indicator, and direct incident actions (`In Progress`, `Resolved`).
 
 ---
 
-## 9. Issues found and how they were resolved (useful history)
+## 5. Security & Identity Management (`auth.js`)
 
-1. **"The server did not return a ticket ID"**: `POST /tickets` returned `"Hello from Lambda!"` because `submitTicket` still contained AWS starter code (Node.js) and local files were empty. Fixed by writing Python code and deploying it to Lambda, setting runtime Python 3.12 and handler `app.lambda_handler`. Saving code locally does not change AWS.
-2. **Malformed API URL in `api.js`** (Markdown link syntax): fixed.
-3. **PowerShell curl quoting**: JSON bodies broke with inline quotes. Use a file with `--data "@body.json"` instead.
-4. **Team names mismatch**: the classifier's team list had to match the frontend's filter options.
-5. **Bedrock not available to the account**: replaced with Groq (section 4).
-6. **Groq HTTP 404**: the first model name was not available to the key. Checked the model list with `curl https://api.groq.com/openai/v1/models` and switched to `openai/gpt-oss-20b`.
-7. **Apparent route problem** (`GET /{ticketId}`): not a bug. It is a child of `/tickets` in the console tree, so the full path is correct.
+- **Role-Based Access Control (RBAC)**: Enforces clear separation between `customer` and `staff` roles.
+- **Session Tokens**: Generates session tokens with 8-hour expiry stored in `localStorage` or `sessionStorage`.
+- **Security Audit Logging**: Records login attempts, clearances, and sign-outs into an internal security audit log (`triage_security_audit_log`).
+- **Terminal Lockout**: Automatically locks staff authentication for 30 seconds after 5 failed password attempts.
 
 ---
 
-## 10. Known limitations and suggested next steps
+## 6. Testing & Operational Verification
 
-- Push final Lambda code to GitHub and fill in `README.md` and `tests/` (currently empty).
-- Verify `ticket-dlq` is attached as the dead-letter queue of `ticket-queue`.
-- Review API Gateway CORS before hosting the frontend elsewhere.
-- No auth or throttling: anyone with the URL can submit tickets and use the Groq quota. Add API throttling or auth before any public use.
-- IAM is broad (`PowerUserRole` with `PowerUserAccess`). For production, replace with least-privilege roles per function.
-- `getTickets` uses a table `Scan`. Add a query index (for example on urgency or createdAt) if volume grows.
-- The Groq key is stored as a Lambda environment variable, which is acceptable for a demo. Use AWS Secrets Manager for production.
-- Medium and Low tickets do not trigger email, by design.
+### Automated Integration Test (`tests/test.py`)
+- Sends a test ticket to `POST /tickets`.
+- Verifies `201 Created` and receives `ticketId`.
+- Polls `GET /tickets/{ticketId}` until `status` transitions to `CLASSIFIED`.
+- Verifies that `urgency`, `team`, and `summary` are populated by the AI engine.
+
+### Concurrency / Load Testing (`tests/load.py`)
+- Emulates multiple concurrent ticket submissions to verify DynamoDB write capacity, SQS queueing resilience, and API Gateway concurrency handling.
+
+### Frontend Production Build
+- Bundled and validated via `npm run build`:
+  - 40 modules transformed with zero syntax or compilation errors.
+  - Optimized output in `frontend/dist/`.

@@ -1,11 +1,23 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { authenticateCustomer, registerCustomer } from "./auth.js";
+import {
+  IconUser,
+  IconEye,
+  IconEyeOff,
+  IconAlertCircle,
+  IconArrowRight,
+} from "./Icons.jsx";
 
-export default function CustomerAuthModal({ currentCustomer, onLoginSuccess, onClose, onGoToStaff }) {
+export default function CustomerAuthModal({
+  currentCustomer,
+  onLoginSuccess,
+  onClose,
+  onGoToStaff,
+}) {
   const [mode, setMode] = useState("login"); // "login" | "register"
   const [name, setName] = useState("");
-  const [email, setEmail] = useState(currentCustomer?.email || "alex.customer@email.com");
-  const [password, setPassword] = useState("Customer@123");
+  const [email, setEmail] = useState(currentCustomer?.email || "");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -30,7 +42,7 @@ export default function CustomerAuthModal({ currentCustomer, onLoginSuccess, onC
       setTimeout(() => {
         setLoading(false);
         setError(err.message);
-      }, 250);
+      }, 200);
     }
   }
 
@@ -39,9 +51,12 @@ export default function CustomerAuthModal({ currentCustomer, onLoginSuccess, onC
       <div className="modal-card customer-auth-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <div className="modal-badge modal-badge--customer">
-            <span>👤 Customer Service Desk</span>
+            <IconUser size={14} />
+            <span>Customer Service Desk</span>
           </div>
-          <button className="modal-close" onClick={onClose} aria-label="Close modal">×</button>
+          <button className="modal-close" onClick={onClose} aria-label="Close modal">
+            &times;
+          </button>
         </div>
 
         <h2>{mode === "login" ? "Customer Sign In" : "Create Customer Account"}</h2>
@@ -54,14 +69,20 @@ export default function CustomerAuthModal({ currentCustomer, onLoginSuccess, onC
           <button
             type="button"
             className={`auth-tab-btn ${mode === "login" ? "auth-tab-btn--active" : ""}`}
-            onClick={() => { setMode("login"); setError(null); }}
+            onClick={() => {
+              setMode("login");
+              setError(null);
+            }}
           >
             Sign In
           </button>
           <button
             type="button"
             className={`auth-tab-btn ${mode === "register" ? "auth-tab-btn--active" : ""}`}
-            onClick={() => { setMode("register"); setError(null); }}
+            onClick={() => {
+              setMode("register");
+              setError(null);
+            }}
           >
             Register Account
           </button>
@@ -69,7 +90,7 @@ export default function CustomerAuthModal({ currentCustomer, onLoginSuccess, onC
 
         {error && (
           <div className="security-alert security-alert--error" role="alert">
-            <span className="alert-icon">⚠️</span>
+            <IconAlertCircle size={16} className="alert-icon" />
             <div>
               <strong>Error</strong>
               <p>{error}</p>
@@ -97,7 +118,7 @@ export default function CustomerAuthModal({ currentCustomer, onLoginSuccess, onC
             <input
               id="cust-email"
               type="email"
-              placeholder="you@example.com"
+              placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -122,7 +143,7 @@ export default function CustomerAuthModal({ currentCustomer, onLoginSuccess, onC
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 tabIndex={-1}
               >
-                {showPassword ? "👁️‍🗨️" : "👁️"}
+                {showPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
               </button>
             </div>
             {mode === "register" && (
@@ -137,9 +158,15 @@ export default function CustomerAuthModal({ currentCustomer, onLoginSuccess, onC
                   <span className="spinner spinner--sm" /> Processing...
                 </>
               ) : mode === "login" ? (
-                "Sign In to Customer Desk"
+                <>
+                  <span>Sign In</span>
+                  <IconArrowRight size={16} />
+                </>
               ) : (
-                "Create Account & Continue"
+                <>
+                  <span>Create Account</span>
+                  <IconArrowRight size={16} />
+                </>
               )}
             </button>
           </div>
@@ -156,7 +183,7 @@ export default function CustomerAuthModal({ currentCustomer, onLoginSuccess, onC
                 onGoToStaff();
               }}
             >
-              🔒 Internal Staff Command Center Login →
+              Internal Staff Login &rarr;
             </button>
           </div>
         </div>

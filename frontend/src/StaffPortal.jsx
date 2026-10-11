@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   listTickets,
   urgencyLabel,
@@ -7,12 +7,23 @@ import {
   getTicketStatusOverrides,
   setTicketStatusOverride,
 } from "./api.js";
+import {
+  IconShield,
+  IconLock,
+  IconSearch,
+  IconCopy,
+  IconSparkles,
+  IconBuilding,
+  IconCheck,
+  IconClock,
+  IconArrowLeft,
+} from "./Icons.jsx";
 
 const REFRESH_MS = 5000;
 const RANK = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 const rank = (t) => (t.urgency in RANK ? RANK[t.urgency] : 3);
 
-export default function StaffPortal({ user, onLogout }) {
+export default function StaffPortal({ user, onLogout, onBackToSelect }) {
   const [tickets, setTickets] = useState([]);
   const [statusText, setStatusText] = useState("Connecting to AWS API Gateway...");
   const [isError, setIsError] = useState(false);
@@ -118,7 +129,6 @@ export default function StaffPortal({ user, onLogout }) {
   const high = count("HIGH");
   const med = count("MEDIUM");
   const low = count("LOW");
-  const analysing = tickets.filter((t) => !t.urgency).length;
   const total = tickets.length || 1;
 
   return (
@@ -127,14 +137,17 @@ export default function StaffPortal({ user, onLogout }) {
       <div className="staff-header-banner">
         <div>
           <div className="portal-badge-row">
-            <span className="badge badge--staff">🛡️ Staff Triage Operations</span>
+            <span className="badge badge--staff">
+              <IconShield size={14} />
+              <span>Staff Triage Operations</span>
+            </span>
             <span className="user-greeting">
-              Logged in as <strong>{user?.name || "Agent"}</strong> ({user?.dept || "Tier 2 Lead"})
+              Logged in as <strong>{user?.name || "Agent"}</strong> ({user?.dept || "Tier 1 Support"})
             </span>
           </div>
           <h1>AI Triage Command Center</h1>
           <p className="lede">
-            Real-time incident ingestion stream. Review AI classifications, prioritize high-impact outages, and manage ticket status.
+            Real-time incident ingestion stream. Review AI classifications, prioritize high-impact outages, and manage ticket lifecycle.
           </p>
         </div>
         <div className="staff-header-actions-col">
@@ -142,16 +155,29 @@ export default function StaffPortal({ user, onLogout }) {
             <span className={`dot ${isError ? "dot--error" : "dot--pulse"}`} />
             <span>{statusText}</span>
           </div>
-          {onLogout && (
-            <button
-              type="button"
-              className="btn btn--staff-lock"
-              onClick={onLogout}
-              title="Lock terminal and end staff session"
-            >
-              🔒 Lock & Sign Out
-            </button>
-          )}
+          <div className="staff-btn-row">
+            {onBackToSelect && (
+              <button
+                type="button"
+                className="btn btn--ghost-dark"
+                onClick={onBackToSelect}
+                title="Return to Portal Selection"
+              >
+                Switch Portal
+              </button>
+            )}
+            {onLogout && (
+              <button
+                type="button"
+                className="btn btn--staff-lock"
+                onClick={onLogout}
+                title="Lock terminal and end staff session"
+              >
+                <IconLock size={14} />
+                <span>Lock & Sign Out</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -163,17 +189,17 @@ export default function StaffPortal({ user, onLogout }) {
           <span className="stat-meta">Active DynamoDB items</span>
         </div>
         <div className="stat-card stat-card--high">
-          <span className="stat-label">High Urgency ⚡</span>
+          <span className="stat-label">High Urgency</span>
           <b className="stat-number">{high}</b>
           <span className="stat-meta">{((high / total) * 100).toFixed(0)}% of total volume</span>
         </div>
         <div className="stat-card stat-card--med">
-          <span className="stat-label">Medium Priority ⚠️</span>
+          <span className="stat-label">Medium Priority</span>
           <b className="stat-number">{med}</b>
           <span className="stat-meta">{((med / total) * 100).toFixed(0)}% of volume</span>
         </div>
         <div className="stat-card stat-card--low">
-          <span className="stat-label">Low / Routine 🟢</span>
+          <span className="stat-label">Low / Routine</span>
           <b className="stat-number">{low}</b>
           <span className="stat-meta">{((low / total) * 100).toFixed(0)}% of volume</span>
         </div>
@@ -189,7 +215,7 @@ export default function StaffPortal({ user, onLogout }) {
       {/* Advanced Filter Toolbar */}
       <div className="staff-toolbar">
         <div className="search-wrap">
-          <span className="search-icon">🔍</span>
+          <IconSearch size={16} className="search-icon" />
           <input
             type="search"
             placeholder="Search keywords, customer text, or ticket ID..."
@@ -207,7 +233,7 @@ export default function StaffPortal({ user, onLogout }) {
               <option value="HIGH">High Priority ({high})</option>
               <option value="MEDIUM">Medium Priority ({med})</option>
               <option value="LOW">Low Priority ({low})</option>
-              <option value="PENDING">Analysing ({analysing})</option>
+              <option value="PENDING">Analysing</option>
             </select>
           </label>
 
@@ -261,7 +287,7 @@ export default function StaffPortal({ user, onLogout }) {
 
                 {t.count > 1 && (
                   <span className="tag tag--count" title={`${t.count} duplicate complaints combined`}>
-                    🔥 {t.count} reports
+                    {t.count} reports
                   </span>
                 )}
 
@@ -269,9 +295,12 @@ export default function StaffPortal({ user, onLogout }) {
                   <strong>{t.summary || t.text}</strong>
                 </span>
 
-                <span className="row-team">🏢 {t.team ? t.team.toUpperCase() : "GENERAL"}</span>
+                <span className="row-team">
+                  <IconBuilding size={13} />
+                  <span>{t.team ? t.team.toUpperCase() : "GENERAL"}</span>
+                </span>
 
-                <span className={`status-pill status-pill--${currentStatus.toLowerCase()}`}>
+                <span className={`status-pill status-pill--${currentStatus.toLowerCase().replace(/\s+/g, "-")}`}>
                   {currentStatus}
                 </span>
 
@@ -286,7 +315,10 @@ export default function StaffPortal({ user, onLogout }) {
 
                     {t.reason && (
                       <div className="ai-explanation-box">
-                        <strong>🤖 AI Classification Rationale:</strong>
+                        <div className="ai-expl-header">
+                          <IconSparkles size={16} />
+                          <strong>AI Classification Rationale:</strong>
+                        </div>
                         <p>{t.reason}</p>
                       </div>
                     )}
@@ -312,7 +344,7 @@ export default function StaffPortal({ user, onLogout }) {
                       <div className="metric-row">
                         <span>Model Pipeline:</span>
                         <span className="model-chip">
-                          {t.classifiedBy === "groq" ? "Groq LLaMA 20B" : "Hybrid Rule Engine"}
+                          {t.classifiedBy === "groq" ? "Groq LLaMA 20B" : "Rule-Based Engine"}
                         </span>
                       </div>
                     </div>
@@ -326,14 +358,16 @@ export default function StaffPortal({ user, onLogout }) {
                           className={`btn-action ${currentStatus === "IN PROGRESS" ? "btn-action--active" : ""}`}
                           onClick={() => handleStatusChange(t.ticketId, "IN PROGRESS")}
                         >
-                          ⏳ In Progress
+                          <IconClock size={13} />
+                          <span>In Progress</span>
                         </button>
                         <button
                           type="button"
                           className={`btn-action ${currentStatus === "RESOLVED" ? "btn-action--active" : ""}`}
                           onClick={() => handleStatusChange(t.ticketId, "RESOLVED")}
                         >
-                          ✅ Resolved
+                          <IconCheck size={13} />
+                          <span>Resolved</span>
                         </button>
                       </div>
                     </div>
@@ -341,7 +375,8 @@ export default function StaffPortal({ user, onLogout }) {
                     <div className="ticket-id-meta">
                       <code>ID: {t.ticketId}</code>
                       <button type="button" className="btn-copy" onClick={() => handleCopy(t.ticketId)}>
-                        {copiedId === t.ticketId ? "Copied! ✓" : "Copy"}
+                        <IconCopy size={13} />
+                        <span>{copiedId === t.ticketId ? "Copied" : "Copy"}</span>
                       </button>
                     </div>
                   </div>

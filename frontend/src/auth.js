@@ -3,50 +3,37 @@
  * Role-Based Access Control (RBAC), Session Management & Credential Verification
  */
 
-// Authorized Internal Staff Directory
+// 3 Authorized Internal Staff Accounts (Only defined in code, not displayed in UI)
 export const AUTHORIZED_STAFF_USERS = [
   {
-    email: "saba.support@triage.internal",
-    password: "Staff@2026",
-    name: "Agent Saba",
-    dept: "Tier 2 Triage Lead",
+    username: "staff1",
+    email: "staff1@triage.internal",
+    password: "staff1@123",
+    name: "Staff Member 1",
+    dept: "Tier 1 Support",
     role: "staff",
-    badgeId: "STF-8821",
+    badgeId: "STF-001",
+    clearance: "Level 1 Support Specialist",
+  },
+  {
+    username: "staff2",
+    email: "staff2@triage.internal",
+    password: "staff2@123",
+    name: "Staff Member 2",
+    dept: "Technical Operations",
+    role: "staff",
+    badgeId: "STF-002",
     clearance: "Level 2 Incident Lead",
   },
   {
-    email: "tech.lead@triage.internal",
-    password: "Tech@2026",
-    name: "Jordan Blake",
-    dept: "Tech Support Engineer",
+    username: "staff3",
+    email: "staff3@triage.internal",
+    password: "staff3@123",
+    name: "Staff Member 3",
+    dept: "System Administration",
     role: "staff",
-    badgeId: "STF-4419",
-    clearance: "Infrastructure & Bug Triage",
-  },
-  {
-    email: "admin@triage.internal",
-    password: "Admin@2026",
-    name: "Dana Scully",
-    dept: "Operations Director",
-    role: "staff",
-    badgeId: "STF-1001",
-    clearance: "Admin & Compliance Lead",
-  },
-];
-
-// Default Customer Accounts
-export const DEFAULT_CUSTOMER_ACCOUNTS = [
-  {
-    email: "alex.customer@email.com",
-    password: "Customer@123",
-    name: "Alex Morgan",
-    role: "customer",
-  },
-  {
-    email: "sarah.t@workmail.com",
-    password: "Customer@123",
-    name: "Sarah Thompson",
-    role: "customer",
+    badgeId: "STF-003",
+    clearance: "Operations Administrator",
   },
 ];
 
@@ -114,7 +101,7 @@ export function getLockoutStatus() {
   }
 }
 
-function recordFailedAttempt(email) {
+function recordFailedAttempt(identifier) {
   try {
     const status = getLockoutStatus();
     const attempts = status.attempts + 1;
@@ -123,7 +110,7 @@ function recordFailedAttempt(email) {
       lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
     }
     localStorage.setItem(LOCKOUT_KEY, JSON.stringify({ attempts, lockedUntil, lastAttempt: Date.now() }));
-    recordAuditLog("STAFF_LOGIN_FAILED", email, "staff", false, `Attempt ${attempts}/${MAX_FAILED_ATTEMPTS}`);
+    recordAuditLog("STAFF_LOGIN_FAILED", identifier, "staff", false, `Attempt ${attempts}/${MAX_FAILED_ATTEMPTS}`);
   } catch {}
 }
 
@@ -136,15 +123,16 @@ function resetFailedAttempts() {
 /**
  * Generate Secure Token
  */
-function createToken(email, role) {
-  const payload = `${email}:${role}:${Date.now()}:${Math.random().toString(36).substring(2)}`;
+function createToken(identifier, role) {
+  const payload = `${identifier}:${role}:${Date.now()}:${Math.random().toString(36).substring(2)}`;
   return btoa(payload);
 }
 
 /**
  * STAFF AUTHENTICATION
+ * Accepts username (e.g. staff1, staff2, staff3) or full internal email.
  */
-export function authenticateStaff(email, password, remember = false) {
+export function authenticateStaff(identifier, password, remember = false) {
   const lockout = getLockoutStatus();
   if (lockout.isLocked) {
     throw new Error(
@@ -152,23 +140,26 @@ export function authenticateStaff(email, password, remember = false) {
     );
   }
 
-  const cleanEmail = (email || "").trim().toLowerCase();
+  const cleanId = (identifier || "").trim().toLowerCase();
   const cleanPass = (password || "").trim();
 
-  if (!cleanEmail || !cleanPass) {
-    throw new Error("Please enter both staff email address and security password.");
+  if (!cleanId || !cleanPass) {
+    throw new Error("Please enter both staff identifier and password.");
   }
 
   const staffUser = AUTHORIZED_STAFF_USERS.find(
-    (u) => u.email.toLowerCase() === cleanEmail
+    (u) =>
+      u.email.toLowerCase() === cleanId ||
+      u.username.toLowerCase() === cleanId ||
+      u.email.toLowerCase().startsWith(cleanId + "@")
   );
 
   if (!staffUser || staffUser.password !== cleanPass) {
-    recordFailedAttempt(cleanEmail);
+    recordFailedAttempt(cleanId);
     const updatedLock = getLockoutStatus();
     if (updatedLock.isLocked) {
       throw new Error(
-        `Access Denied. Account locked for ${updatedLock.remainingSeconds} seconds due to ${MAX_FAILED_ATTEMPTS} failed attempts.`
+        `Access Denied. Account locked for ${updatedLock.remainingSeconds} seconds due to repeated failed attempts.`
       );
     }
     throw new Error(
@@ -178,11 +169,12 @@ export function authenticateStaff(email, password, remember = false) {
 
   // Success
   resetFailedAttempts();
-  const token = createToken(staffUser.email, "staff");
+  const token = createToken(staffUser.username, "staff");
   const expiresAt = Date.now() + SESSION_DURATION_MS;
 
   const session = {
     role: "staff",
+    username: staffUser.username,
     email: staffUser.email,
     name: staffUser.name,
     dept: staffUser.dept,
@@ -202,7 +194,7 @@ export function authenticateStaff(email, password, remember = false) {
     localStorage.removeItem(STAFF_SESSION_KEY);
   }
 
-  recordAuditLog("STAFF_LOGIN_SUCCESS", staffUser.email, "staff", true, `Clearance: ${staffUser.clearance}`);
+  recordAuditLog("STAFF_LOGIN_SUCCESS", staffUser.username, "staff", true, `Clearance: ${staffUser.clearance}`);
   return session;
 }
 
@@ -225,7 +217,7 @@ export function getStaffSession() {
 export function logoutStaff() {
   const current = getStaffSession();
   if (current) {
-    recordAuditLog("STAFF_LOGOUT", current.email, "staff", true, "Session cleared");
+    recordAuditLog("STAFF_LOGOUT", current.username || current.email, "staff", true, "Session cleared");
   }
   try {
     sessionStorage.removeItem(STAFF_SESSION_KEY);
@@ -234,18 +226,15 @@ export function logoutStaff() {
 }
 
 /**
- * CUSTOMER AUTHENTICATION
+ * CUSTOMER AUTHENTICATION & REGISTRATION
+ * No hardcoded accounts. Registered accounts stored locally in browser storage.
  */
 function getRegisteredCustomers() {
   try {
     const raw = localStorage.getItem(CUSTOMER_ACCOUNTS_KEY);
-    if (!raw) {
-      localStorage.setItem(CUSTOMER_ACCOUNTS_KEY, JSON.stringify(DEFAULT_CUSTOMER_ACCOUNTS));
-      return DEFAULT_CUSTOMER_ACCOUNTS;
-    }
-    return JSON.parse(raw);
+    return raw ? JSON.parse(raw) : [];
   } catch {
-    return DEFAULT_CUSTOMER_ACCOUNTS;
+    return [];
   }
 }
 
@@ -261,7 +250,7 @@ export function authenticateCustomer(email, password, remember = false) {
   const match = customers.find((c) => c.email.toLowerCase() === cleanEmail);
 
   if (!match || match.password !== cleanPass) {
-    throw new Error("Invalid customer credentials. Please check your email and password.");
+    throw new Error("Invalid customer credentials. Please check your email or create a new account.");
   }
 
   const session = {
@@ -308,6 +297,7 @@ export function registerCustomer(name, email, password, remember = false) {
     email: cleanEmail,
     password: cleanPass,
     role: "customer",
+    registeredAt: new Date().toISOString(),
   };
 
   customers.push(newAccount);

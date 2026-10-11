@@ -1,24 +1,36 @@
-import { useState } from "react";
+import React, { useState } from "react";
+import { authenticateCustomer, registerCustomer } from "./auth.js";
 import {
-  authenticateCustomer,
-  registerCustomer,
-  DEFAULT_CUSTOMER_ACCOUNTS,
-} from "./auth.js";
+  IconUser,
+  IconMail,
+  IconKey,
+  IconEye,
+  IconEyeOff,
+  IconAlertCircle,
+  IconArrowLeft,
+  IconArrowRight,
+} from "./Icons.jsx";
 
-export default function CustomerLogin({ onLoginSuccess, onGoToStaff }) {
-  const [mode, setMode] = useState("login"); // "login" | "register"
+export default function CustomerLogin({
+  onLoginSuccess,
+  onGoToStaff,
+  onBackToSelect,
+  initialMode = "login",
+}) {
+  const [mode, setMode] = useState(initialMode); // "login" | "register"
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [showCredHelper, setShowCredHelper] = useState(false);
 
   function handleSubmit(e) {
     e.preventDefault();
     setError(null);
+    setSuccessMsg(null);
     setLoading(true);
 
     try {
@@ -31,36 +43,45 @@ export default function CustomerLogin({ onLoginSuccess, onGoToStaff }) {
       setTimeout(() => {
         setLoading(false);
         onLoginSuccess(session);
-      }, 350);
+      }, 300);
     } catch (err) {
       setTimeout(() => {
         setLoading(false);
         setError(err.message);
-      }, 250);
+      }, 200);
     }
-  }
-
-  function handleAutoFill(cust) {
-    setEmail(cust.email);
-    setPassword(cust.password);
-    setError(null);
   }
 
   return (
     <div className="customer-login-page-wrapper">
       <div className="customer-login-card">
+        {onBackToSelect && (
+          <button
+            type="button"
+            className="btn-back-link"
+            onClick={onBackToSelect}
+          >
+            <IconArrowLeft size={14} />
+            <span>Back to Portal Selection</span>
+          </button>
+        )}
+
         {/* Customer Head Banner */}
         <div className="customer-login-head">
           <div className="customer-avatar-icon">
-            <span>👤</span>
+            <IconUser size={24} />
           </div>
           <div className="customer-titles">
             <div className="customer-desk-badge">
               <span className="dot dot--pulse" />
-              CUSTOMER SERVICE DESK
+              Customer Service Desk
             </div>
-            <h2>Customer Access Portal</h2>
-            <p className="customer-sub">Submit issues, track AI triage & view status</p>
+            <h2>{mode === "login" ? "Customer Sign In" : "Create Customer Account"}</h2>
+            <p className="customer-sub">
+              {mode === "login"
+                ? "Enter your email and password to access your support dashboard."
+                : "Register a customer account to submit tickets and track AI triage."}
+            </p>
           </div>
         </div>
 
@@ -69,14 +90,20 @@ export default function CustomerLogin({ onLoginSuccess, onGoToStaff }) {
           <button
             type="button"
             className={`auth-tab-btn ${mode === "login" ? "auth-tab-btn--active" : ""}`}
-            onClick={() => { setMode("login"); setError(null); }}
+            onClick={() => {
+              setMode("login");
+              setError(null);
+            }}
           >
             Sign In
           </button>
           <button
             type="button"
             className={`auth-tab-btn ${mode === "register" ? "auth-tab-btn--active" : ""}`}
-            onClick={() => { setMode("register"); setError(null); }}
+            onClick={() => {
+              setMode("register");
+              setError(null);
+            }}
           >
             Create Account
           </button>
@@ -85,10 +112,21 @@ export default function CustomerLogin({ onLoginSuccess, onGoToStaff }) {
         {/* Error Notification */}
         {error && (
           <div className="security-alert security-alert--error" role="alert">
-            <span className="alert-icon">⚠️</span>
+            <IconAlertCircle size={18} className="alert-icon" />
             <div>
               <strong>Authentication Notice</strong>
               <p>{error}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Success Notification */}
+        {successMsg && (
+          <div className="security-alert security-alert--success" role="alert">
+            <IconAlertCircle size={18} className="alert-icon" />
+            <div>
+              <strong>Account Created</strong>
+              <p>{successMsg}</p>
             </div>
           </div>
         )}
@@ -100,7 +138,9 @@ export default function CustomerLogin({ onLoginSuccess, onGoToStaff }) {
                 Full Name <span className="field-required">*</span>
               </label>
               <div className="input-with-icon">
-                <span className="input-icon">👤</span>
+                <span className="input-icon">
+                  <IconUser size={16} />
+                </span>
                 <input
                   id="customer-name"
                   type="text"
@@ -119,11 +159,13 @@ export default function CustomerLogin({ onLoginSuccess, onGoToStaff }) {
               Email Address <span className="field-required">*</span>
             </label>
             <div className="input-with-icon">
-              <span className="input-icon">✉️</span>
+              <span className="input-icon">
+                <IconMail size={16} />
+              </span>
               <input
                 id="customer-email"
                 type="email"
-                placeholder="user@example.com"
+                placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
@@ -138,11 +180,13 @@ export default function CustomerLogin({ onLoginSuccess, onGoToStaff }) {
               Password <span className="field-required">*</span>
             </label>
             <div className="input-with-icon">
-              <span className="input-icon">🔑</span>
+              <span className="input-icon">
+                <IconKey size={16} />
+              </span>
               <input
                 id="customer-pass"
                 type={showPassword ? "text" : "password"}
-                placeholder="Enter password"
+                placeholder={mode === "login" ? "Enter your password" : "At least 6 characters"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
@@ -156,7 +200,7 @@ export default function CustomerLogin({ onLoginSuccess, onGoToStaff }) {
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 tabIndex={-1}
               >
-                {showPassword ? "👁️‍🗨️" : "👁️"}
+                {showPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
               </button>
             </div>
             {mode === "register" && (
@@ -184,54 +228,22 @@ export default function CustomerLogin({ onLoginSuccess, onGoToStaff }) {
             >
               {loading ? (
                 <>
-                  <span className="spinner spinner--sm" /> Verifying...
+                  <span className="spinner spinner--sm" /> Processing...
                 </>
               ) : mode === "login" ? (
-                "Sign In & Enter Help Desk →"
+                <>
+                  <span>Sign In</span>
+                  <IconArrowRight size={16} />
+                </>
               ) : (
-                "Create Account & Continue →"
+                <>
+                  <span>Create Account & Continue</span>
+                  <IconArrowRight size={16} />
+                </>
               )}
             </button>
           </div>
         </form>
-
-        {/* Demo Customer Helper */}
-        <div className="cred-helper-box cred-helper-box--customer">
-          <button
-            type="button"
-            className="cred-helper-toggle"
-            onClick={() => setShowCredHelper(!showCredHelper)}
-          >
-            <span>👥 Demo Customer Accounts</span>
-            <span className="helper-arrow">{showCredHelper ? "▲" : "▼"}</span>
-          </button>
-
-          {showCredHelper && (
-            <div className="cred-helper-content">
-              <p className="cred-helper-desc">
-                Select a test account below to pre-fill credentials:
-              </p>
-              <div className="cred-card-list">
-                {DEFAULT_CUSTOMER_ACCOUNTS.map((cust) => (
-                  <div key={cust.email} className="cred-card cred-card--cust">
-                    <div className="cred-meta">
-                      <strong>{cust.name}</strong>
-                      <code className="cred-code">{cust.email}</code>
-                      <span className="cred-pass">Pass: <code>{cust.password}</code></span>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn--sm btn--cust-fill"
-                      onClick={() => handleAutoFill(cust)}
-                    >
-                      Fill
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* Footer Redirect to Staff Gate */}
         <div className="customer-login-footer">
@@ -241,7 +253,7 @@ export default function CustomerLogin({ onLoginSuccess, onGoToStaff }) {
             className="btn-link btn-link--staff"
             onClick={onGoToStaff}
           >
-            🔒 Internal Staff Command Center Login →
+            Staff Command Center Login &rarr;
           </button>
         </div>
       </div>
