@@ -42,6 +42,7 @@ function normalizeTicket(raw) {
     team: t.team ? String(t.team).toLowerCase() : "",
     summary: t.summary || "",
     reason: t.reason || "",
+    classifiedBy: t.classifiedBy || "",
     createdAt: t.createdAt || "",
   };
 }
@@ -59,6 +60,7 @@ export async function submitTicket(text) {
   });
   const id = data && (data.ticketId || data.id);
   if (!id) throw new Error("The server did not return a ticket ID.");
+  saveMyTicketId(id);
   return id;
 }
 
@@ -75,5 +77,55 @@ export async function getTicket(id) {
     if (found) return found;
     throw e;
   }
+}
+
+// Local storage tracking for Customer "My Tickets"
+const MY_TICKETS_KEY = "triage_my_ticket_ids";
+export function getMyTicketIds() {
+  try {
+    return JSON.parse(localStorage.getItem(MY_TICKETS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function saveMyTicketId(id) {
+  try {
+    const list = getMyTicketIds();
+    if (!list.includes(id)) {
+      list.unshift(id);
+      localStorage.setItem(MY_TICKETS_KEY, JSON.stringify(list));
+    }
+  } catch {}
+}
+
+// Staff ticket resolution state stored in localStorage for demo responsiveness
+const RESOLVED_TICKETS_KEY = "triage_staff_ticket_status";
+export function getTicketStatusOverrides() {
+  try {
+    return JSON.parse(localStorage.getItem(RESOLVED_TICKETS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+export function setTicketStatusOverride(id, status) {
+  try {
+    const map = getTicketStatusOverrides();
+    map[id] = status;
+    localStorage.setItem(RESOLVED_TICKETS_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+// AI Severity & Sentiment inference helpers for display
+export function getAISentiment(text = "", urgency = "") {
+  const lower = text.toLowerCase();
+  if (urgency === "HIGH" || lower.includes("urgent") || lower.includes("crash") || lower.includes("broken") || lower.includes("frustrated")) {
+    return { label: "High Frustration / Escalated", color: "var(--high)", score: 88 };
+  }
+  if (urgency === "MEDIUM" || lower.includes("fail") || lower.includes("problem") || lower.includes("waiting")) {
+    return { label: "Dissatisfied / Blocked", color: "var(--medium)", score: 64 };
+  }
+  return { label: "Neutral / Inquiring", color: "var(--low)", score: 28 };
 }
 
