@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import CustomerPortal from "./CustomerPortal.jsx";
+import CustomerLogin from "./CustomerLogin.jsx";
 import StaffPortal from "./StaffPortal.jsx";
 import StaffLogin from "./StaffLogin.jsx";
 import CustomerAuthModal from "./CustomerAuthModal.jsx";
@@ -33,6 +34,10 @@ export default function App() {
         // Verify current staff session validity
         const validSession = getStaffSession();
         setStaffSession(validSession);
+      } else {
+        // Verify current customer session validity
+        const validCust = getCustomerSession();
+        setCustomerSession(validCust);
       }
     }
     window.addEventListener("hashchange", handleHashChange);
@@ -62,7 +67,7 @@ export default function App() {
 
   function handleCustomerLogout() {
     logoutCustomer();
-    setCustomerSession(getCustomerSession());
+    setCustomerSession(null);
   }
 
   function handleGoToStaff() {
@@ -140,27 +145,35 @@ export default function App() {
             </div>
 
             <div className="header-actions">
-              {/* Customer Account Identity */}
-              <div
-                className="role-indicator role-indicator--customer cursor-pointer"
-                onClick={() => setShowCustomerAuth(true)}
-                title="Manage Customer Account"
-              >
-                <span className="role-avatar">👤</span>
-                <div className="role-texts">
-                  <span className="role-name">{customerSession?.name || "Customer"}</span>
-                  <span className="role-title">{customerSession?.email || "Sign In"}</span>
-                </div>
-              </div>
+              {customerSession ? (
+                <>
+                  {/* Customer Account Identity */}
+                  <div
+                    className="role-indicator role-indicator--customer"
+                    title={`Signed in as ${customerSession.name}`}
+                  >
+                    <span className="role-avatar">👤</span>
+                    <div className="role-texts">
+                      <span className="role-name">{customerSession.name}</span>
+                      <span className="role-title">{customerSession.email}</span>
+                    </div>
+                  </div>
 
-              <button
-                type="button"
-                className="btn btn--header-login"
-                onClick={() => setShowCustomerAuth(true)}
-                title="Account Settings & Login"
-              >
-                Account
-              </button>
+                  <button
+                    type="button"
+                    className="btn btn--header-logout"
+                    onClick={handleCustomerLogout}
+                    title="Sign out of customer account"
+                  >
+                    🚪 Sign Out
+                  </button>
+                </>
+              ) : (
+                <div className="security-status-badge">
+                  <span className="dot dot--pulse" />
+                  AUTHENTICATION REQUIRED
+                </div>
+              )}
 
               <button
                 type="button"
@@ -186,11 +199,18 @@ export default function App() {
           />
         )
       ) : (
-        <CustomerPortal
-          user={customerSession}
-          onOpenAuth={() => setShowCustomerAuth(true)}
-          onLogout={handleCustomerLogout}
-        />
+        customerSession ? (
+          <CustomerPortal
+            user={customerSession}
+            onOpenAuth={() => setShowCustomerAuth(true)}
+            onLogout={handleCustomerLogout}
+          />
+        ) : (
+          <CustomerLogin
+            onLoginSuccess={handleCustomerLoginSuccess}
+            onGoToStaff={handleGoToStaff}
+          />
+        )
       )}
 
       {/* Footer */}
@@ -199,7 +219,7 @@ export default function App() {
           <span>🚀 Serverless Architecture • AWS API Gateway + Lambda + DynamoDB + Groq AI</span>
           <span className="footer-links">
             {route === "staff" ? (
-              <a href="#/">← Public Customer Portal</a>
+              <a href="#/">← Customer Service Desk</a>
             ) : (
               <a href="#/queue">Staff Command Center (Restricted) 🔒</a>
             )}
@@ -211,7 +231,7 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Customer Authentication Modal */}
+      {/* Customer Authentication Modal (if invoked while in customer portal) */}
       {showCustomerAuth && (
         <CustomerAuthModal
           currentCustomer={customerSession}

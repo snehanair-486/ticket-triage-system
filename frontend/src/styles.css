@@ -1770,6 +1770,167 @@ textarea:focus {
 }
 
 /* ==========================================================================
+   CUSTOMER SECURE LOGIN PAGE
+   ========================================================================== */
+.customer-login-page-wrapper {
+  min-height: calc(100vh - 140px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1.5rem;
+  background: radial-gradient(circle at 50% 15%, #1e293b 0%, #0a1128 100%);
+}
+
+.customer-login-card {
+  width: 100%;
+  max-width: 30rem;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 2.25rem;
+  box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.25), 0 0 25px rgba(37, 99, 235, 0.08);
+  color: var(--ink);
+  position: relative;
+  overflow: hidden;
+}
+
+.customer-login-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #2563eb, #06b6d4, #10b981);
+}
+
+.customer-login-head {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  margin-bottom: 1.5rem;
+}
+
+.customer-avatar-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  background: #eff6ff;
+  border: 1.5px solid #bfdbfe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.1);
+}
+
+.customer-titles h2 {
+  font-size: 1.3rem;
+  margin: 0.15rem 0 0.1rem;
+  color: var(--ink);
+}
+
+.customer-desk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--brand-blue);
+  text-transform: uppercase;
+}
+
+.customer-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.customer-login-form .form-group {
+  margin-bottom: 1.15rem;
+}
+
+.customer-login-form label {
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  display: block;
+}
+
+.customer-login-form .input-with-icon input {
+  background: #ffffff;
+  border: 1.5px solid var(--line);
+  color: var(--ink);
+}
+
+.customer-login-form .input-with-icon input:focus {
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  background: #ffffff;
+}
+
+.btn--customer-submit {
+  width: 100%;
+  font-size: 0.95rem;
+  padding: 0.8rem;
+}
+
+.cred-helper-box--customer {
+  background: #f8fafc;
+  border-color: var(--line);
+}
+.cred-helper-box--customer .cred-helper-toggle {
+  color: var(--muted);
+}
+.cred-helper-box--customer .cred-helper-toggle:hover {
+  background: #f1f5f9;
+  color: var(--ink);
+}
+.cred-helper-box--customer .cred-helper-content {
+  border-top-color: var(--line);
+}
+.cred-card--cust {
+  background: #ffffff;
+  border-color: var(--line);
+}
+.cred-card--cust strong {
+  color: var(--ink);
+}
+.cred-card--cust .cred-code {
+  color: var(--muted);
+}
+.cred-card--cust .cred-pass {
+  color: var(--muted);
+}
+.cred-card--cust .cred-pass code {
+  color: var(--brand-blue);
+}
+.btn--cust-fill {
+  background: #eff6ff;
+  color: var(--brand-blue);
+  border: 1px solid #bfdbfe;
+}
+.btn--cust-fill:hover {
+  background: var(--brand-blue);
+  color: #ffffff;
+}
+
+.customer-login-footer {
+  margin-top: 1.5rem;
+  padding-top: 1.15rem;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* ==========================================================================
    FOOTER
    ========================================================================== */
 .site-footer {

@@ -35,7 +35,7 @@ export const AUTHORIZED_STAFF_USERS = [
 ];
 
 // Default Customer Accounts
-const DEFAULT_CUSTOMERS = [
+export const DEFAULT_CUSTOMER_ACCOUNTS = [
   {
     email: "alex.customer@email.com",
     password: "Customer@123",
@@ -240,28 +240,28 @@ function getRegisteredCustomers() {
   try {
     const raw = localStorage.getItem(CUSTOMER_ACCOUNTS_KEY);
     if (!raw) {
-      localStorage.setItem(CUSTOMER_ACCOUNTS_KEY, JSON.stringify(DEFAULT_CUSTOMERS));
-      return DEFAULT_CUSTOMERS;
+      localStorage.setItem(CUSTOMER_ACCOUNTS_KEY, JSON.stringify(DEFAULT_CUSTOMER_ACCOUNTS));
+      return DEFAULT_CUSTOMER_ACCOUNTS;
     }
     return JSON.parse(raw);
   } catch {
-    return DEFAULT_CUSTOMERS;
+    return DEFAULT_CUSTOMER_ACCOUNTS;
   }
 }
 
-export function authenticateCustomer(email, password) {
+export function authenticateCustomer(email, password, remember = false) {
   const cleanEmail = (email || "").trim().toLowerCase();
   const cleanPass = (password || "").trim();
 
   if (!cleanEmail || !cleanPass) {
-    throw new Error("Please enter your email and password.");
+    throw new Error("Please enter both customer email and password.");
   }
 
   const customers = getRegisteredCustomers();
   const match = customers.find((c) => c.email.toLowerCase() === cleanEmail);
 
   if (!match || match.password !== cleanPass) {
-    throw new Error("Invalid customer credentials. Please verify your email and password.");
+    throw new Error("Invalid customer credentials. Please check your email and password.");
   }
 
   const session = {
@@ -269,18 +269,24 @@ export function authenticateCustomer(email, password) {
     email: match.email,
     name: match.name,
     token: createToken(match.email, "customer"),
+    expiresAt: Date.now() + SESSION_DURATION_MS,
     authenticatedAt: new Date().toISOString(),
   };
 
-  try {
-    localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(session));
-  } catch {}
+  const payload = JSON.stringify(session);
+  if (remember) {
+    localStorage.setItem(CUSTOMER_SESSION_KEY, payload);
+    sessionStorage.removeItem(CUSTOMER_SESSION_KEY);
+  } else {
+    sessionStorage.setItem(CUSTOMER_SESSION_KEY, payload);
+    localStorage.removeItem(CUSTOMER_SESSION_KEY);
+  }
 
   recordAuditLog("CUSTOMER_LOGIN", match.email, "customer", true);
   return session;
 }
 
-export function registerCustomer(name, email, password) {
+export function registerCustomer(name, email, password, remember = false) {
   const cleanName = (name || "").trim();
   const cleanEmail = (email || "").trim().toLowerCase();
   const cleanPass = (password || "").trim();
@@ -309,34 +315,32 @@ export function registerCustomer(name, email, password) {
     localStorage.setItem(CUSTOMER_ACCOUNTS_KEY, JSON.stringify(customers));
   } catch {}
 
-  return authenticateCustomer(cleanEmail, cleanPass);
+  return authenticateCustomer(cleanEmail, cleanPass, remember);
 }
 
 export function getCustomerSession() {
   try {
-    const raw = localStorage.getItem(CUSTOMER_SESSION_KEY);
-    if (!raw) {
-      // Default initial customer session
-      return {
-        role: "customer",
-        name: "Alex Morgan",
-        email: "alex.customer@email.com",
-        isGuest: false,
-      };
+    const raw = sessionStorage.getItem(CUSTOMER_SESSION_KEY) || localStorage.getItem(CUSTOMER_SESSION_KEY);
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    if (!session || session.role !== "customer" || !session.token) return null;
+    if (session.expiresAt && Date.now() > session.expiresAt) {
+      logoutCustomer();
+      return null;
     }
-    return JSON.parse(raw);
+    return session;
   } catch {
-    return {
-      role: "customer",
-      name: "Alex Morgan",
-      email: "alex.customer@email.com",
-      isGuest: false,
-    };
+    return null;
   }
 }
 
 export function logoutCustomer() {
+  const current = getCustomerSession();
+  if (current) {
+    recordAuditLog("CUSTOMER_LOGOUT", current.email, "customer", true, "Customer session cleared");
+  }
   try {
+    sessionStorage.removeItem(CUSTOMER_SESSION_KEY);
     localStorage.removeItem(CUSTOMER_SESSION_KEY);
   } catch {}
 }

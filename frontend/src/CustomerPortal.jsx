@@ -101,14 +101,14 @@ export default function CustomerPortal({ user, onOpenAuth, onLogout }) {
           <span className="user-greeting">
             Signed in as <strong>{user?.name || "Customer"}</strong> {user?.email ? `(${user.email})` : ""}
           </span>
-          {onOpenAuth && (
+          {onLogout && (
             <button
               type="button"
               className="btn-switch-account"
-              onClick={onOpenAuth}
-              title="Manage or switch customer account"
+              onClick={onLogout}
+              title="Sign out of customer account"
             >
-              Switch Account
+              Sign Out 🚪
             </button>
           )}
         </div>
